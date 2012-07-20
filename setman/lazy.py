@@ -1,4 +1,5 @@
 from django.conf import settings as django_settings
+from django.core.cache import cache
 
 from setman.models import Settings
 from setman.utils import AVAILABLE_SETTINGS, is_settings_container
@@ -6,6 +7,8 @@ from setman.utils import AVAILABLE_SETTINGS, is_settings_container
 
 __all__ = ('LazySettings', )
 
+
+CACHE_KEY = 'setman__custom_cache'
 
 class LazySettings(object):
     """
@@ -29,7 +32,10 @@ class LazySettings(object):
         if hasattr(django_settings, name):
             delattr(django_settings, name)
         else:
-            delattr(self._custom, name)
+            custom = self._custom
+            delattr(custom, name)
+            custom.save()
+            cache.delete(CACHE_KEY)
 
     def __getattr__(self, name):
         """
@@ -77,15 +83,21 @@ class LazySettings(object):
             setattr(django_settings, name, value)
         # Then setup value to project setting
         elif not self._prefix:
-            setattr(self._custom, name, value)
+            custom = self._custom
+            setattr(custom, name, value)
+            custom.save()
+            cache.delete(CACHE_KEY)
         # And finally setup value to app setting
         else:
-            data, prefix = self._custom.data, self._prefix
+            custom = self._custom
+            data, prefix = custom.data, self._prefix
 
             if not prefix in data:
                 data[prefix] = {}
 
             data[prefix].update({name: value})
+            custom.save()
+            cache.delete(CACHE_KEY)
 
     def revert(self):
         """
@@ -103,8 +115,8 @@ class LazySettings(object):
         """
         Clear custom settings cache.
         """
-        if hasattr(self, '_custom_cache'):
-            delattr(self, '_custom_cache')
+        if CACHE_KEY in cache:
+            cache.delete(CACHE_KEY)
 
     @property
     def _custom(self):
@@ -114,10 +126,10 @@ class LazySettings(object):
         if self._parent:
             return self._parent._custom
 
-        if not hasattr(self, '_custom_cache'):
-            setattr(self, '_custom_cache', self._get_custom_settings())
+        if not CACHE_KEY in cache:
+            cache.set(CACHE_KEY, self._get_custom_settings())
 
-        return getattr(self, '_custom_cache')
+        return cache.get(CACHE_KEY)
 
     def _get_custom_settings(self):
         """
