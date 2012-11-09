@@ -126,10 +126,11 @@ class LazySettings(object):
         if self._parent:
             return self._parent._custom
 
-        if not CACHE_KEY in cache:
+        ret = cache.get(CACHE_KEY)
+        if not ret:
             cache.set(CACHE_KEY, self._get_custom_settings())
-
-        return cache.get(CACHE_KEY)
+            return cache.get(CACHE_KEY)
+        return ret
 
     def _get_custom_settings(self):
         """
